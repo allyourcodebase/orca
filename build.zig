@@ -173,7 +173,7 @@ pub fn build(b: *std.Build) void {
     // b.getInstallStep().dependOn(&b.addInstallFile(shaders, "glsl_shaders.h").step);
     b.getInstallStep().dependOn(&b.addInstallArtifact(liborca, .{ .dest_dir = .{ .override = .bin } }).step);
 
-    const write_bindings = b.addWriteFiles();
+    const write_bindings = b.addNamedWriteFiles("stubs");
     exe.addIncludePath(write_bindings.getDirectory());
 
     const gles_json = blk: {
@@ -189,7 +189,7 @@ pub fn build(b: *std.Build) void {
         gles_bindgen_step.addArg("--header");
         const gles_header_name = "graphics/orca_gl31.h";
         _ = write_bindings.addCopyFile(gles_bindgen_step.addOutputFileArg(gles_header_name), gles_header_name);
-        gles_bindgen_step.addArg("--logfile");
+        gles_bindgen_step.addArg("--log");
         gles_bindgen_step.addArg("/dev/null");
 
         gles_bindgen_step.addArg("--json");
@@ -290,3 +290,121 @@ fn generateBindings(
     }
     _ = write.addCopyFile(wb, wasm3_bindings_basename);
 }
+
+const AppOptions = struct {
+    optimize: std.builtin.OptimizeMode,
+    root_source_file: std.Build.LazyPath,
+};
+
+pub fn addApp(b: *std.build.Builder, orca_dep: *std.Build.Dependency, options: AppOptions) *std.Build.Step.Compile {
+    const upstream = orca_dep.builder.dependency("orca", .{});
+
+    const app = b.addSharedLibrary(.{
+        .name = "module",
+        .target = .{
+            .cpu_arch = .wasm32,
+            .os_tag = .freestanding,
+            .cpu_features_add = std.Target.wasm.featureSet(&.{.bulk_memory}),
+        },
+        .optimize = options.optimize,
+        .root_source_file = .{ .path = "src/main.zig" },
+    });
+
+    app.rdynamic = true;
+    app.disable_sanitize_c = true;
+    app.defineCMacro("__ORCA__", null);
+    app.addSystemIncludePath(upstream.path("src/libc-shim/include"));
+    app.addIncludePath(upstream.path("src"));
+    app.addIncludePath(upstream.path("src/ext"));
+    app.addIncludePath(orca_dep.namedWriteFiles("stubs").getDirectory());
+
+    const cflags: []const []const u8 = &.{
+        "-O2", // works around undefined symbol on __fpclassifyl
+    };
+    app.addCSourceFile(.{
+        .file = upstream.path("src/orca.c"),
+        .flags = cflags,
+    });
+    app.addCSourceFiles(.{
+        .dependency = upstream,
+        .files = libc_shim_files,
+        .flags = cflags,
+    });
+
+    return app;
+}
+
+const libc_shim_files: []const []const u8 = &.{
+    "src/libc-shim/src/__cos.c",
+    "src/libc-shim/src/__cosdf.c",
+    "src/libc-shim/src/__errno_location.c",
+    "src/libc-shim/src/__math_divzero.c",
+    "src/libc-shim/src/__math_divzerof.c",
+    "src/libc-shim/src/__math_invalid.c",
+    "src/libc-shim/src/__math_invalidf.c",
+    "src/libc-shim/src/__math_oflow.c",
+    "src/libc-shim/src/__math_oflowf.c",
+    "src/libc-shim/src/__math_uflow.c",
+    "src/libc-shim/src/__math_uflowf.c",
+    "src/libc-shim/src/__math_xflow.c",
+    "src/libc-shim/src/__math_xflowf.c",
+    "src/libc-shim/src/__rem_pio2.c",
+    "src/libc-shim/src/__rem_pio2_large.c",
+    "src/libc-shim/src/__rem_pio2f.c",
+    "src/libc-shim/src/__sin.c",
+    "src/libc-shim/src/__sindf.c",
+    "src/libc-shim/src/__tan.c",
+    "src/libc-shim/src/__tandf.c",
+    "src/libc-shim/src/abs.c",
+    "src/libc-shim/src/acos.c",
+    "src/libc-shim/src/acosf.c",
+    "src/libc-shim/src/asin.c",
+    "src/libc-shim/src/asinf.c",
+    "src/libc-shim/src/atan.c",
+    "src/libc-shim/src/atan2.c",
+    "src/libc-shim/src/atan2f.c",
+    "src/libc-shim/src/atanf.c",
+    "src/libc-shim/src/cbrt.c",
+    "src/libc-shim/src/cbrtf.c",
+    "src/libc-shim/src/ceil.c",
+    "src/libc-shim/src/cos.c",
+    "src/libc-shim/src/cosf.c",
+    "src/libc-shim/src/exp.c",
+    "src/libc-shim/src/exp2f_data.c",
+    "src/libc-shim/src/exp2f_data.h",
+    "src/libc-shim/src/exp_data.c",
+    "src/libc-shim/src/exp_data.h",
+    "src/libc-shim/src/expf.c",
+    "src/libc-shim/src/fabs.c",
+    "src/libc-shim/src/fabsf.c",
+    "src/libc-shim/src/floor.c",
+    "src/libc-shim/src/fmod.c",
+    "src/libc-shim/src/libm.h",
+    "src/libc-shim/src/log.c",
+    "src/libc-shim/src/log2.c",
+    "src/libc-shim/src/log2_data.c",
+    "src/libc-shim/src/log2_data.h",
+    "src/libc-shim/src/log2f.c",
+    "src/libc-shim/src/log2f_data.c",
+    "src/libc-shim/src/log2f_data.h",
+    "src/libc-shim/src/log_data.c",
+    "src/libc-shim/src/log_data.h",
+    "src/libc-shim/src/logf.c",
+    "src/libc-shim/src/logf_data.c",
+    "src/libc-shim/src/logf_data.h",
+    "src/libc-shim/src/pow.c",
+    "src/libc-shim/src/pow_data.h",
+    "src/libc-shim/src/powf.c",
+    "src/libc-shim/src/powf_data.c",
+    "src/libc-shim/src/powf_data.h",
+    "src/libc-shim/src/scalbn.c",
+    "src/libc-shim/src/sin.c",
+    "src/libc-shim/src/sinf.c",
+    "src/libc-shim/src/sqrt.c",
+    "src/libc-shim/src/sqrt_data.c",
+    "src/libc-shim/src/sqrt_data.h",
+    "src/libc-shim/src/sqrtf.c",
+    "src/libc-shim/src/string.c",
+    "src/libc-shim/src/tan.c",
+    "src/libc-shim/src/tanf.c",
+};

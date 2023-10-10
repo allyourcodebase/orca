@@ -6,11 +6,19 @@ pub fn build(b: *std.Build) void {
     const upstream = b.dependency("orca", .{});
     const angle_dep = b.dependency("angle", .{});
 
+    // For the orca python script
+    const orca_dir = b.addNamedWriteFiles("orca_dir");
+    _ = orca_dir.addCopyFile(upstream.path("resources/Menlo.ttf"), "resources/Menlo.ttf");
+    _ = orca_dir.addCopyFile(upstream.path("resources/Menlo Bold.ttf"), "resources/Menlo Bold.ttf");
+    _ = orca_dir.addCopyFile(angle_dep.path("bin/libGLESv2.dylib"), "src/ext/angle/bin/libGLESv2.dylib");
+    _ = orca_dir.addCopyFile(angle_dep.path("bin/libEGL.dylib"), "src/ext/angle/bin/libEGL.dylib");
+
     const liborca = b.addSharedLibrary(.{
         .name = "orca",
         .target = target,
         .optimize = optimize,
     });
+    _ = orca_dir.addCopyFile(liborca.getEmittedBin(), "build/bin/liborca.dylib");
 
     liborca.addIncludePath(upstream.path("src"));
     liborca.addIncludePath(upstream.path("src/util"));
@@ -95,6 +103,8 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    _ = orca_dir.addCopyFile(exe.getEmittedBin(), "build/bin/orca_runtime");
+
     exe.addIncludePath(upstream.path("src"));
     exe.addIncludePath(upstream.path("src/ext"));
     exe.addIncludePath(angle_dep.path("include"));
@@ -140,6 +150,8 @@ pub fn build(b: *std.Build) void {
             "-o",
         });
         const mtl_renderer = xcrun2.addOutputFileArg("mtl_renderer.metallib");
+        _ = orca_dir.addCopyFile(mtl_renderer, "build/bin/mtl_renderer.metallib");
+
         xcrun2.addFileArg(mtl_renderer_air);
         b.getInstallStep().dependOn(&b.addInstallFile(
             mtl_renderer,
@@ -290,50 +302,6 @@ fn generateBindings(
     }
     _ = write.addCopyFile(wb, wasm3_bindings_basename);
 }
-
-const AppOptions = struct {
-    optimize: std.builtin.OptimizeMode,
-    root_source_file: std.Build.LazyPath,
-};
-
-pub fn addApp(b: *std.build.Builder, orca_dep: *std.Build.Dependency, options: AppOptions) *std.Build.Step.Compile {
-    const upstream = orca_dep.builder.dependency("orca", .{});
-
-    const app = b.addSharedLibrary(.{
-        .name = "module",
-        .target = .{
-            .cpu_arch = .wasm32,
-            .os_tag = .freestanding,
-            .cpu_features_add = std.Target.wasm.featureSet(&.{.bulk_memory}),
-        },
-        .optimize = options.optimize,
-        .root_source_file = .{ .path = "src/main.zig" },
-    });
-
-    app.rdynamic = true;
-    app.disable_sanitize_c = true;
-    app.defineCMacro("__ORCA__", null);
-    app.addSystemIncludePath(upstream.path("src/libc-shim/include"));
-    app.addIncludePath(upstream.path("src"));
-    app.addIncludePath(upstream.path("src/ext"));
-    app.addIncludePath(orca_dep.namedWriteFiles("stubs").getDirectory());
-
-    const cflags: []const []const u8 = &.{
-        "-O2", // works around undefined symbol on __fpclassifyl
-    };
-    app.addCSourceFile(.{
-        .file = upstream.path("src/orca.c"),
-        .flags = cflags,
-    });
-    app.addCSourceFiles(.{
-        .dependency = upstream,
-        .files = libc_shim_files,
-        .flags = cflags,
-    });
-
-    return app;
-}
-
 const libc_shim_files: []const []const u8 = &.{
     "src/libc-shim/src/__cos.c",
     "src/libc-shim/src/__cosdf.c",
@@ -371,40 +339,100 @@ const libc_shim_files: []const []const u8 = &.{
     "src/libc-shim/src/cosf.c",
     "src/libc-shim/src/exp.c",
     "src/libc-shim/src/exp2f_data.c",
-    "src/libc-shim/src/exp2f_data.h",
     "src/libc-shim/src/exp_data.c",
-    "src/libc-shim/src/exp_data.h",
     "src/libc-shim/src/expf.c",
     "src/libc-shim/src/fabs.c",
     "src/libc-shim/src/fabsf.c",
     "src/libc-shim/src/floor.c",
     "src/libc-shim/src/fmod.c",
-    "src/libc-shim/src/libm.h",
     "src/libc-shim/src/log.c",
     "src/libc-shim/src/log2.c",
     "src/libc-shim/src/log2_data.c",
-    "src/libc-shim/src/log2_data.h",
     "src/libc-shim/src/log2f.c",
     "src/libc-shim/src/log2f_data.c",
-    "src/libc-shim/src/log2f_data.h",
     "src/libc-shim/src/log_data.c",
-    "src/libc-shim/src/log_data.h",
     "src/libc-shim/src/logf.c",
     "src/libc-shim/src/logf_data.c",
-    "src/libc-shim/src/logf_data.h",
     "src/libc-shim/src/pow.c",
-    "src/libc-shim/src/pow_data.h",
     "src/libc-shim/src/powf.c",
     "src/libc-shim/src/powf_data.c",
-    "src/libc-shim/src/powf_data.h",
     "src/libc-shim/src/scalbn.c",
     "src/libc-shim/src/sin.c",
     "src/libc-shim/src/sinf.c",
     "src/libc-shim/src/sqrt.c",
     "src/libc-shim/src/sqrt_data.c",
-    "src/libc-shim/src/sqrt_data.h",
     "src/libc-shim/src/sqrtf.c",
     "src/libc-shim/src/string.c",
     "src/libc-shim/src/tan.c",
     "src/libc-shim/src/tanf.c",
 };
+
+const AppOptions = struct {
+    name: []const u8,
+    resource_dir: ?std.Build.LazyPath,
+    optimize: std.builtin.OptimizeMode,
+    root_source_file: std.Build.LazyPath,
+};
+
+pub fn addApp(b: *std.build.Builder, orca_dep: *std.Build.Dependency, options: AppOptions) std.Build.LazyPath {
+    const upstream = orca_dep.builder.dependency("orca", .{});
+
+    const app = b.addSharedLibrary(.{
+        .name = "module",
+        .target = .{
+            .cpu_arch = .wasm32,
+            .os_tag = .freestanding,
+            .cpu_features_add = std.Target.wasm.featureSet(&.{.bulk_memory}),
+        },
+        .optimize = options.optimize,
+        .root_source_file = .{ .path = "src/main.zig" },
+    });
+
+    app.rdynamic = true;
+    app.disable_sanitize_c = true;
+    app.defineCMacro("__ORCA__", null);
+    app.addSystemIncludePath(upstream.path("src/libc-shim/include"));
+    app.addIncludePath(upstream.path("src"));
+    app.addIncludePath(upstream.path("src/ext"));
+    app.addIncludePath(orca_dep.namedWriteFiles("stubs").getDirectory());
+
+    const cflags: []const []const u8 = &.{
+        "-O2", // works around undefined symbol on __fpclassifyl
+    };
+    app.addCSourceFile(.{
+        .file = upstream.path("src/orca.c"),
+        .flags = cflags,
+    });
+    app.addCSourceFiles(.{
+        .dependency = upstream,
+        .files = libc_shim_files,
+        .flags = cflags,
+    });
+
+    const bundle = b.addSystemCommand(&.{
+        "python3",
+    });
+
+    const orca_dir = orca_dep.namedWriteFiles("orca_dir").getDirectory();
+
+    bundle.addFileArg(upstream.path("orca"));
+    bundle.addArgs(&.{ "bundle", "--orca-dir" });
+
+    bundle.addDirectoryArg(orca_dir);
+
+    bundle.addArgs(&.{
+        "--name", options.name,
+    });
+
+    if (options.resource_dir) |rd| {
+        bundle.addArgs(&.{"--resource-dir"});
+        bundle.addDirectoryArg(rd);
+    }
+
+    bundle.addArgs(&.{"--out-dir"});
+    const output = bundle.addOutputFileArg(".");
+
+    bundle.addFileArg(app.getEmittedBin());
+
+    return output;
+}

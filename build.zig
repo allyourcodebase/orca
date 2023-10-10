@@ -38,34 +38,42 @@ pub fn build(b: *std.Build) void {
     });
 
     wasm3.addIncludePath(upstream.path("src/ext/wasm3/source"));
-    wasm3.addCSourceFilesFrom(upstream, &.{
-        "src/ext/wasm3/source/m3_api_libc.c",
-        "src/ext/wasm3/source/m3_api_meta_wasi.c",
-        "src/ext/wasm3/source/m3_api_tracer.c",
-        "src/ext/wasm3/source/m3_api_uvwasi.c",
-        "src/ext/wasm3/source/m3_api_wasi.c",
-        "src/ext/wasm3/source/m3_bind.c",
-        "src/ext/wasm3/source/m3_code.c",
-        "src/ext/wasm3/source/m3_compile.c",
-        "src/ext/wasm3/source/m3_core.c",
-        "src/ext/wasm3/source/m3_env.c",
-        "src/ext/wasm3/source/m3_exec.c",
-        "src/ext/wasm3/source/m3_function.c",
-        "src/ext/wasm3/source/m3_info.c",
-        "src/ext/wasm3/source/m3_module.c",
-        "src/ext/wasm3/source/m3_parse.c",
-    }, &.{
-        "-Dd_m3HasWASI",
-        "-fno-sanitize=undefined", // :^(
+    wasm3.addCSourceFiles(.{
+        .dependency = upstream,
+        .files = &.{
+            "src/ext/wasm3/source/m3_api_libc.c",
+            "src/ext/wasm3/source/m3_api_meta_wasi.c",
+            "src/ext/wasm3/source/m3_api_tracer.c",
+            "src/ext/wasm3/source/m3_api_uvwasi.c",
+            "src/ext/wasm3/source/m3_api_wasi.c",
+            "src/ext/wasm3/source/m3_bind.c",
+            "src/ext/wasm3/source/m3_code.c",
+            "src/ext/wasm3/source/m3_compile.c",
+            "src/ext/wasm3/source/m3_core.c",
+            "src/ext/wasm3/source/m3_env.c",
+            "src/ext/wasm3/source/m3_exec.c",
+            "src/ext/wasm3/source/m3_function.c",
+            "src/ext/wasm3/source/m3_info.c",
+            "src/ext/wasm3/source/m3_module.c",
+            "src/ext/wasm3/source/m3_parse.c",
+        },
+        .flags = &.{
+            "-Dd_m3HasWASI",
+            "-fno-sanitize=undefined", // :^(
+        },
     });
 
     switch (target.getOsTag()) {
         .macos => {
-            liborca.addCSourceFilesFrom(upstream, &.{
-                "src/orca.m",
-            }, &.{
-                "-std=c11",
-                "-fno-sanitize=undefined", // :^(
+            liborca.addCSourceFiles(.{
+                .dependency = upstream,
+                .files = &.{
+                    "src/orca.m",
+                },
+                .flags = &.{
+                    "-std=c11",
+                    "-fno-sanitize=undefined", // :^(
+                },
             });
 
             liborca.addLibraryPath(angle_dep.path("bin"));
@@ -94,11 +102,15 @@ pub fn build(b: *std.Build) void {
     exe.linkLibrary(liborca);
     exe.linkLibrary(wasm3);
 
-    exe.addCSourceFilesFrom(upstream, &.{
-        "src/runtime.c",
-    }, &.{
-        "-std=c11",
-        "-fno-sanitize=undefined", // :^(
+    exe.addCSourceFiles(.{
+        .dependency = upstream,
+        .files = &.{
+            "src/runtime.c",
+        },
+        .flags = &.{
+            "-std=c11",
+            "-fno-sanitize=undefined", // :^(
+        },
     });
 
     if (optimize == .Debug) {

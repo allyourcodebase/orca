@@ -1,14 +1,20 @@
 .{
     .name = "orca",
-	.version = "0.0.0",
-	.dependencies = .{
-		.orca = .{
-			.url = "git+https://git.handmade.network/hmn/orca.git#6e4943c2fa7bebcd6682a7b589d680d08634db77",
-			.hash = "122055608ef2919e346ca49d43daf962a552ab49ee8a66ab4e07bed6b77946a26600",
-		},
-		.angle = .{
-			.url = "https://andrewkelley.me/temp/angle-macos-jank-2023-07-05.tar.xz",
-			.hash = "1220debbddc530e157511b559f71303ce94d7cd74c2f6861cacd2dc2a6f89881b559",		
-		}
-	},
+    .version = "0.0.0",
+    .paths = .{
+        "LICENSE",
+        "README.md",
+        "build.zig",
+        "build.zig.zon",
+    },
+    .dependencies = .{
+        .orca = .{
+            .url = "git+https://github.com/orca-app/orca.git#18d109285f6381b8a57957085b3b45958e439599",
+            .hash = "12205ea64c693d1ed544d4cfe222cb86f6eafaf75ea01990a6af7ef8abcc065dac0d",
+        },
+        .angle = .{
+            .url = "https://andrewkelley.me/temp/angle-macos-jank-2023-07-05.tar.xz",
+            .hash = "1220debbddc530e157511b559f71303ce94d7cd74c2f6861cacd2dc2a6f89881b559",
+        },
+    },
 }

@@ -30,7 +30,7 @@ pub fn build(b: *std.build.Builder) void {
 }
 ```
 
-See https://github.com/kristoff-it/orca-ui-hello-zig for a complete example.
+See https://github.com/kristoff-it/orca-ui-hello-zig for a complete example that depends on this repository.
 
 ### Runtime only
 Running `zig build` will produce the runtime assets which can then be used via other build scripts.

@@ -4,7 +4,7 @@ Zig build for https://orca-app.dev
 
 ## Usage
 ### Building an app
-This build script exposes a `addApp` function that applications can use to compile, link and bundle their applications.
+This build script exposes a `addApp` function that Orca application developers can use to compile, link and bundle their applications.
 
 Usage example:
 ```zig

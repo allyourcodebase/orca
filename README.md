@@ -44,7 +44,7 @@ Running `zig build` will produce the runtime assets which can then be used via o
 
 ## TODOs
 
-- Implement the missing bundling features (eg adding icons), the current code only implements what's required to make Orca's UI sample work.
+- Implement the missing bundling features (eg adding icons), the current code only implements what's required to make Orca's UI sample work (contributor friendly).
 - Implement support for Windows (current code is macOS only).
 - Remove the python dependency by implementing the same logic as part of the build script.
-- Add support for having the application be implemented in C (contributor friendly!)
+- Add support for having the application be implemented in C (super contributor friendly!)

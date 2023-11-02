@@ -12,9 +12,13 @@
             .url = "git+https://github.com/kristoff-it/orca.git#c8fc485587a839b8f7e6531c873c6c31f7062a36",
             .hash = "1220330fb937d968d616cf3a420af6286b69a39db871a0ea65648d5e5923f84764e4",
         },
-        .angle = .{
+        .angle_mac = .{
             .url = "https://andrewkelley.me/temp/angle-macos-jank-2023-07-05.tar.xz",
             .hash = "1220debbddc530e157511b559f71303ce94d7cd74c2f6861cacd2dc2a6f89881b559",
+        },
+        .angle_windows = .{
+             .url = "https://andrewkelley.me/temp/orca-angle-windows-2019-2023-10-01.tar.xz",
+             .hash = "1220519a9293655c9e5e15b1a749c4ee91d4229d3c08a4ce8a1f3ef62ac7f92f8138",
         },
     },
 }

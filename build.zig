@@ -1,24 +1,49 @@
+const builtin = @import("builtin");
 const std = @import("std");
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
     const upstream = b.dependency("orca", .{});
-    const angle_dep = b.dependency("angle", .{});
+    const angle_dep = switch (target.getOsTag()) {
+        .macos => b.dependency("angle_mac", .{}),
+        .windows => b.dependency("angle_windows", .{}),
+        else => unreachable,
+    };
 
     // For the orca python script
     const orca_dir = b.addNamedWriteFiles("orca_dir");
     _ = orca_dir.addCopyFile(upstream.path("resources/Menlo.ttf"), "resources/Menlo.ttf");
     _ = orca_dir.addCopyFile(upstream.path("resources/Menlo Bold.ttf"), "resources/Menlo Bold.ttf");
-    _ = orca_dir.addCopyFile(angle_dep.path("bin/libGLESv2.dylib"), "src/ext/angle/bin/libGLESv2.dylib");
-    _ = orca_dir.addCopyFile(angle_dep.path("bin/libEGL.dylib"), "src/ext/angle/bin/libEGL.dylib");
+    switch (target.getOsTag()) {
+        .macos => {
+            _ = orca_dir.addCopyFile(angle_dep.path("bin/libGLESv2.dylib"), "src/ext/angle/bin/libGLESv2.dylib");
+            _ = orca_dir.addCopyFile(angle_dep.path("bin/libEGL.dylib"), "src/ext/angle/bin/libEGL.dylib");
+        },
+        .windows => {
+            _ = orca_dir.addCopyFile(angle_dep.path("lib/EGL.dll"), "src/ext/angle/bin/libEGL.dll");
+            _ = orca_dir.addCopyFile(angle_dep.path("lib/EGL.dll.lib"), "src/ext/angle/lib/libEGL.dll.lib");
+            _ = orca_dir.addCopyFile(angle_dep.path("lib/GLESv2.dll"), "src/ext/angle/bin/libGLESv2.dll");
+            _ = orca_dir.addCopyFile(angle_dep.path("lib/GLESv2.dll.lib"), "src/ext/angle/lib/libGLESv2.dll.lib");
+        },
+        else => unreachable,
+    }
 
     const liborca = b.addSharedLibrary(.{
         .name = "orca",
         .target = target,
         .optimize = optimize,
     });
-    _ = orca_dir.addCopyFile(liborca.getEmittedBin(), "build/bin/liborca.dylib");
+
+    _ = orca_dir.addCopyFile(
+        liborca.getEmittedBin(),
+        std.zig.binNameAlloc(b.allocator, .{
+            .root_name = liborca.name,
+            .target = liborca.target_info.target,
+            .output_mode = .Lib,
+            .link_mode = .Dynamic,
+        }) catch unreachable,
+    );
 
     liborca.addIncludePath(upstream.path("src"));
     liborca.addIncludePath(upstream.path("src/util"));
@@ -68,8 +93,24 @@ pub fn build(b: *std.Build) void {
         .flags = &.{
             "-Dd_m3HasWASI",
             "-fno-sanitize=undefined", // :^(
+            // REMOVE ME: hack around clock_gettime not being declared
+            "-Wno-implicit-function-declaration",
         },
     });
+
+    wasm3.linkLibC();
+    switch (target.getOsTag()) {
+        // Wasm3 expects mingw to provide a clock_gettime implementation
+        // but zig seems to be missing this part of mingw
+        .windows => wasm3.addCSourceFile(.{
+            .file = .{ .path = "clock_gettime_win32.c" },
+            .flags = &.{
+                "-Dd_m3HasWASI",
+                "-fno-sanitize=undefined",
+            },
+        }),
+        else => {},
+    }
 
     switch (target.getOsTag()) {
         .macos => {
@@ -91,6 +132,24 @@ pub fn build(b: *std.Build) void {
             liborca.linkFramework("QuartzCore");
             liborca.linkSystemLibrary2("EGL", .{ .weak = true });
             liborca.linkSystemLibrary2("GLESv2", .{ .weak = true });
+        },
+        .windows => {
+            liborca.addLibraryPath(angle_dep.path("lib"));
+            liborca.linkSystemLibrary2("libEGL.dll", .{ .weak = true });
+            liborca.linkSystemLibrary2("libGLESv2.dll", .{ .weak = true });
+
+            liborca.linkSystemLibrary("user32");
+            liborca.linkSystemLibrary("opengl32");
+            liborca.linkSystemLibrary("gdi32");
+            liborca.linkSystemLibrary("shcore");
+            //liborca.linkSystemLibrary("delayimp");
+            liborca.linkSystemLibrary("dwmapi");
+            liborca.linkSystemLibrary("comctl32");
+            liborca.linkSystemLibrary("ole32");
+            liborca.linkSystemLibrary("shell32");
+            liborca.linkSystemLibrary("shlwapi");
+            liborca.linkSystemLibrary("dxgi");
+            liborca.linkSystemLibrary("dxguid");
         },
         else => {},
     }
@@ -158,8 +217,15 @@ pub fn build(b: *std.Build) void {
             "bin/mtl_renderer.metallib",
         ).step);
     }
+
+    const python3 = switch (builtin.os.tag) {
+        // TODO: remove once findProgram is working on windows
+        .windows => "python",
+        else => b.findProgram(&.{"python3", "python"}, &.{}) catch unreachable,
+    };
+
     const embed_text_files = b.addSystemCommand(&.{
-        "python3",
+        python3,
     });
 
     embed_text_files.addFileArg(upstream.path("scripts/embed_text_files.py"));
@@ -170,7 +236,6 @@ pub fn build(b: *std.Build) void {
     });
 
     const shaders = embed_text_files.addOutputFileArg("glsl_shaders.h");
-    _ = shaders;
 
     embed_text_files.addFileArg(upstream.path("src/graphics/glsl_shaders/common.glsl"));
     embed_text_files.addFileArg(upstream.path("src/graphics/glsl_shaders/blit_vertex.glsl"));
@@ -182,7 +247,14 @@ pub fn build(b: *std.Build) void {
     embed_text_files.addFileArg(upstream.path("src/graphics/glsl_shaders/raster.glsl"));
     embed_text_files.addFileArg(upstream.path("src/graphics/glsl_shaders/balance_workgroups.glsl"));
 
-    // b.getInstallStep().dependOn(&b.addInstallFile(shaders, "glsl_shaders.h").step);
+    switch (target.getOsTag()) {
+        .windows => {
+            const step = b.addNamedWriteFiles("glsl_include");
+            _ = step.addCopyFile(shaders, "glsl_shaders.h");
+            liborca.addIncludePath(step.getDirectory());
+        },
+        else => {},
+    }
     b.getInstallStep().dependOn(&b.addInstallArtifact(liborca, .{ .dest_dir = .{ .override = .bin } }).step);
 
     const write_bindings = b.addNamedWriteFiles("stubs");
@@ -190,7 +262,7 @@ pub fn build(b: *std.Build) void {
 
     const gles_json = blk: {
         const gles_bindgen_step = b.addSystemCommand(&.{
-            "python3",
+            python3,
         });
 
         // gles_bindgen_step.lazy_cwd = upstream.path("scripts/");
@@ -202,7 +274,10 @@ pub fn build(b: *std.Build) void {
         const gles_header_name = "graphics/orca_gl31.h";
         _ = write_bindings.addCopyFile(gles_bindgen_step.addOutputFileArg(gles_header_name), gles_header_name);
         gles_bindgen_step.addArg("--log");
-        gles_bindgen_step.addArg("/dev/null");
+        switch (builtin.os.tag) {
+            .windows => gles_bindgen_step.addArg("NUL"),
+            else => gles_bindgen_step.addArg("/dev/null"),
+        }
 
         gles_bindgen_step.addArg("--json");
         break :blk gles_bindgen_step.addOutputFileArg("wasmbind/gles_api.json");
@@ -217,6 +292,7 @@ pub fn build(b: *std.Build) void {
         null,
         null,
         "wasmbind/gles_api_bind_gen.c",
+        python3,
     );
 
     generateBindings(
@@ -228,6 +304,7 @@ pub fn build(b: *std.Build) void {
         "wasmbind/core_api_stubs.c",
         null,
         "wasmbind/core_api_bind_gen.c",
+        python3,
     );
 
     generateBindings(
@@ -239,6 +316,7 @@ pub fn build(b: *std.Build) void {
         "graphics/orca_surface_stubs.c",
         "graphics/graphics.h",
         "wasmbind/surface_api_bind_gen.c",
+        python3,
     );
 
     generateBindings(
@@ -250,6 +328,7 @@ pub fn build(b: *std.Build) void {
         null,
         "platform/platform_clock.h",
         "wasmbind/clock_api_bind_gen.c",
+        python3,
     );
     generateBindings(
         b,
@@ -260,6 +339,7 @@ pub fn build(b: *std.Build) void {
         "platform/orca_io_stubs.c",
         null,
         "wasmbind/io_api_bind_gen.c",
+        python3,
     );
 
     b.installArtifact(exe);
@@ -274,9 +354,10 @@ fn generateBindings(
     guest_stubs_basename_opt: ?[]const u8,
     guest_include: ?[]const u8,
     wasm3_bindings_basename_opt: ?[]const u8,
+    python3: []const u8,
 ) void {
     const bindgen_step = b.addSystemCommand(&.{
-        "python3",
+        python3,
     });
 
     bindgen_step.addFileArg(upstream.path("scripts/bindgen.py"));
@@ -375,6 +456,12 @@ const AppOptions = struct {
 };
 
 pub fn addApp(b: *std.build.Builder, orca_dep: *std.Build.Dependency, options: AppOptions) std.Build.LazyPath {
+    const python3 = switch (builtin.os.tag) {
+        // TODO: remove once findProgram is working on windows
+        .windows => "python",
+        else => b.findProgram(&.{"python3", "python"}, &.{}) catch unreachable,
+    };
+
     const upstream = orca_dep.builder.dependency("orca", .{});
 
     const app = b.addSharedLibrary(.{
@@ -410,7 +497,7 @@ pub fn addApp(b: *std.build.Builder, orca_dep: *std.Build.Dependency, options: A
     });
 
     const bundle = b.addSystemCommand(&.{
-        "python3",
+        python3,
     });
 
     const orca_dir = orca_dep.namedWriteFiles("orca_dir").getDirectory();
